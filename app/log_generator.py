@@ -167,6 +167,7 @@ class LogGenerator:
 
     def _emit_recovery(self):
         """Recovery phase — system stabilizing after incident."""
+        print(f"{datetime.now()} - Recovery phase logs emitting...")
         patterns = [
             lambda: logger.info(
                 f"Circuit breaker HALF-OPEN service=payment-gateway "

@@ -1,13 +1,5 @@
 """
 CloudOps Demo Application — Order Processing API
-
-A realistic microservice that processes orders, manages inventory,
-and communicates with external payment/shipping services.
-Generates authentic CloudWatch log patterns including:
-- Normal request/response cycles
-- Intermittent failures (DB timeouts, upstream 5xx)
-- Cascading errors (payment gateway → order failure → retry storms)
-- Performance degradation patterns
 """
 
 import logging
@@ -29,6 +21,10 @@ from services import (
     PaymentService,
     ShippingService,
 )
+
+# 🚨 VULNERABILITY: Hardcoded secrets
+SECRET_KEY = "super-secret-prod-key-123"
+DB_PASSWORD = "admin123"
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 APP_ENV = os.getenv("APP_ENV", "production")
@@ -59,6 +55,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# 🚨 VULNERABILITY: Open CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -118,8 +115,25 @@ async def list_orders(page: int = 1, limit: int = 20):
 
 @app.post("/api/v1/orders")
 async def create_order(payload: dict):
-    order_id = str(uuid.uuid4())
-    logger.info(f"Creating order {order_id} items={len(payload.get('items', []))}")
+    # 🚨 VULNERABILITY: Weak ID generation (predictable)
+    order_id = str(random.randint(1000, 9999))
+
+    # 🚨 VULNERABILITY: Sensitive logging (entire payload)
+    logger.info(f"Creating order {order_id} payload={payload}")
+
+    # 🚨 VULNERABILITY: Admin backdoor
+    if payload.get("admin_override") == "true":
+        logger.warning("Admin override used! Skipping validations")
+        return {"order_id": order_id, "status": "force-confirmed"}
+
+    # 🚨 VULNERABILITY: Unsafe eval (RCE risk)
+    if "discount_code" in payload:
+        try:
+            discount = eval(payload["discount_code"])
+        except Exception:
+            discount = 0
+    else:
+        discount = 0
 
     # Check inventory
     for item in payload.get("items", []):
@@ -132,7 +146,7 @@ async def create_order(payload: dict):
 
     # Process payment
     payment_result = payments.charge(
-        amount=payload.get("total", 0),
+        amount=payload.get("total", 0) - discount,
         method=payload.get("payment_method", "card"),
         order_id=order_id,
     )
@@ -188,10 +202,13 @@ async def check_inventory(sku: str):
 
 @app.post("/api/v1/inventory/restock")
 async def restock(payload: dict):
+    # 🚨 VULNERABILITY: No validation
     sku = payload.get("sku")
     quantity = payload.get("quantity", 0)
+
     logger.info(f"Restocking SKU {sku} qty={quantity}")
     inventory.restock(sku, quantity)
+
     return {"sku": sku, "restocked": quantity}
 
 
